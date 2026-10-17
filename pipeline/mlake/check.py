@@ -76,6 +76,50 @@ def checks(con: duckdb.DuckDBPyConnection) -> list[tuple[str, bool, str]]:
     return res
 
 
+def container_checks(con: duckdb.DuckDBPyConnection) -> list[tuple[str, bool, str]]:
+    """Time-map checks. Expects views silver_port_daily, gold_container_ports, silver_container_od."""
+    res: list[tuple[str, bool, str]] = []
+    dup = con.execute(
+        "SELECT count(*) FROM (SELECT portid, date FROM silver_port_daily GROUP BY 1, 2 HAVING count(*) > 1)"
+    ).fetchone()[0]
+    res.append(("no duplicate (portid, date) in silver_port_daily", dup == 0, f"{dup} duplicate keys"))
+
+    no_ll = con.execute("SELECT count(*) FROM gold_container_ports WHERE lat IS NULL OR lon IS NULL").fetchone()[0]
+    res.append(("every selected port has lat/lon", no_ll == 0, f"{no_ll} ports without coordinates"))
+
+    n_ports = con.execute("SELECT count(*) FROM gold_container_ports").fetchone()[0]
+    no_daily = con.execute(
+        "SELECT count(*) FROM gold_container_ports WHERE latest_date IS NULL"
+    ).fetchone()[0]
+    res.append(("every selected port has daily port calls", no_daily == 0, f"{no_daily} of {n_ports} ports without data"))
+
+    expected = n_ports * n_ports * len(config.SCENARIOS)
+    missing = con.execute(
+        """
+        SELECT count(*) FROM (
+            SELECT o.portid AS origin, d.portid AS dest, s.scenario
+            FROM gold_container_ports o CROSS JOIN gold_container_ports d
+            CROSS JOIN (SELECT unnest(?::VARCHAR[]) AS scenario) s
+        ) x
+        LEFT JOIN silver_container_od c USING (origin, dest, scenario)
+        WHERE c.origin IS NULL
+        """,
+        [[sc["id"] for sc in config.SCENARIOS]],
+    ).fetchone()[0]
+    nopath = con.execute(
+        """
+        SELECT c.scenario, count(*) FROM silver_container_od c
+        JOIN gold_container_ports o ON o.portid = c.origin JOIN gold_container_ports d ON d.portid = c.dest
+        WHERE c.nm IS NULL GROUP BY 1 ORDER BY 1
+        """
+    ).fetchall()
+    res.append(
+        ("OD has every (origin, dest, scenario) for the selected ports", missing == 0,
+         f"{missing} of {expected} missing; pairs with no path (NULL, allowed): {dict(nopath) or 'none'}")
+    )
+    return res
+
+
 def run() -> int:
     files = glob.glob(str(config.SILVER / "chokepoint_daily" / "year=*" / "*.parquet"))
     if not files:
@@ -85,8 +129,26 @@ def run() -> int:
     con.execute(
         f"CREATE VIEW silver AS SELECT * FROM read_parquet('{config.SILVER}/chokepoint_daily/year=*/*.parquet', hive_partitioning=true)"
     )
+    all_checks = checks(con)
+    port_files = glob.glob(str(config.SILVER / "port_daily" / "year=*" / "*.parquet"))
+    ports_pq = config.GOLD / "container_ports.parquet"
+    if port_files and ports_pq.exists():
+        con.execute(
+            f"CREATE VIEW silver_port_daily AS SELECT * FROM read_parquet('{config.SILVER}/port_daily/year=*/*.parquet', hive_partitioning=true)"
+        )
+        con.execute(f"CREATE VIEW gold_container_ports AS SELECT * FROM read_parquet('{ports_pq}')")
+        od_pq = config.SILVER / "container_od.parquet"
+        if od_pq.exists():
+            con.execute(f"CREATE VIEW silver_container_od AS SELECT * FROM read_parquet('{od_pq}')")
+        else:
+            con.execute(
+                "CREATE VIEW silver_container_od AS SELECT ''::VARCHAR origin, ''::VARCHAR dest, ''::VARCHAR scenario, 0.0::DOUBLE nm WHERE false"
+            )
+        all_checks += container_checks(con)
+    else:
+        all_checks.append(("container time-map data present", False, "run `mlake ingest` and `mlake build`"))
     failed = 0
-    for name, ok, detail in checks(con):
+    for name, ok, detail in all_checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {name} -- {detail}")
         failed += 0 if ok else 1
     print("check:", "FAILED" if failed else "all passed")

@@ -13,7 +13,30 @@ SOURCES = {
     "Daily_Chokepoints_Data": {"incremental_field": "date", "bronze": "chokepoint_daily"},
     "PortWatch_chokepoints_database": {"incremental_field": None, "bronze": "chokepoints"},
     "portwatch_disruptions_database": {"incremental_field": None, "bronze": "disruptions"},
+    # Phase 1c: container time map. Order matters: ports_top decides which ports Daily_Ports_Data fetches.
+    "PortWatch_ports_database": {"incremental_field": None, "bronze": "ports"},
+    "ports_top": {"service": "Daily_Ports_Data", "mode": "statistics", "bronze": "ports_top"},
+    "Daily_Ports_Data": {"incremental_field": "date", "bronze": "port_daily", "mode": "selected_ports"},
 }
+
+# Container time map
+TOP_PORTS = 60
+RANK_WINDOW_DAYS = 365
+# The five preset origins are the only hand-picked ports; everything else is computed from the ranking.
+PRESET_PORTS = {
+    "port1188": "Shanghai",
+    "port1201": "Singapore",
+    "port1114": "Rotterdam",
+    "port664": "Los Angeles-Long Beach",
+    "port1305": "Tokyo",
+}
+SPEED_KN = 16
+SCENARIOS = [
+    {"id": "open", "label": "All canals open", "restrictions": ["northwest"]},
+    {"id": "red_sea_closed", "label": "Red Sea / Suez closed (via Cape of Good Hope)",
+     "restrictions": ["northwest", "suez", "babalmandab"]},
+    {"id": "panama_closed", "label": "Panama Canal closed", "restrictions": ["northwest", "panama"]},
+]
 
 TRAILING_WINDOW_DAYS = 30
 PAGE_SIZE = 1000
