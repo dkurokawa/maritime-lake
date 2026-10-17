@@ -104,27 +104,80 @@ pages. Fewer verified events beat many unverified ones.
   secrets exist (`if: env.R2_ACCESS_KEY_ID != ''`).
 - Tests: pytest for SQL models on a small fixture (ma7, yoy, baseline, Feb 29 mapping, dedupe/upsert).
 
-## Phase 1c — "The container's world" (time-space map)  [after Phase 1 review]
+## Phase 1c — "The container's world" (time-space map)  [frozen 2026-10-18]
 
 Container shipping is the hidden revolution of the modern economy. Show the world as a container
 sees it: a map distorted so that distance = sailing time from a chosen port.
 
-- **Time-space map**: user picks an origin port (default Shanghai; presets Rotterdam, Singapore,
-  Los Angeles, Tokyo). Every other major container port moves to its geographic bearing from the origin
-  at a radius proportional to sailing days. Coastlines warp with them (piecewise-affine warp over a
-  Delaunay triangulation of port control points + fixed far-field anchors; Natural Earth 1:50m land).
-  Animated morph between geographic and time space.
-- **Scenario toggle**: "Suez/Red Sea open" vs "via Cape of Good Hope" (and Panama restricted). The map
-  visibly stretches Europe away from Asia. Link the scenario to the PortWatch Red Sea story view.
-- **Sailing time** = sea-route distance (searoute-py, Apache-2.0; verify its passage-restriction option
-  names) ÷ assumed service speed (16 kn, shown in the UI as an assumption). Precomputed OD matrix for
-  ~50 container ports × scenarios in the pipeline → `gold/container_od.json`.
-- **Port activity**: PortWatch `Daily_Ports_Data` filtered to the selected ~50 container ports only
-  (`where=portid IN (...)`, ~140k rows; not the 5.86M full table). Marker size = ma7 of container calls.
-  Port list: top container ports by PortWatch container calls over the last 365 days (computed, not hand-picked).
-- **Cost**: freight-rate indices (Drewry WCI, Freightos FBX, SCFI) have unclear reuse terms → do not
-  ingest or redistribute. Time is the cost proxy. At most, link to the public index pages in the story text.
-- Rendering: d3-geo + canvas/SVG (not MapLibre) for this view. Mobile works.
+### Facts verified 2026-10-18 (do not re-derive)
+- `Daily_Ports_Data` fields: date, year, month, day, portid, portname, country, ISO3,
+  portcalls_{container,dry_bulk,general_cargo,roro,tanker,cargo}, portcalls, import_*, export_*, ObjectId.
+  The layer supports server-side statistics: one request with
+  `outStatistics=[{"statisticType":"sum","onStatisticField":"portcalls_container","outStatisticFieldName":"calls"}]`,
+  `groupByFieldsForStatistics=portid,portname,country`, `orderByFields=calls DESC`, `where=date >= DATE '<max-365d>'`
+  returns the ranking (Singapore, Shanghai, Hong Kong, Ningbo, Busan, ... Los Angeles-Long Beach is #51).
+- searoute-py 1.6.0 (Apache-2.0): `searoute.searoute(origin_lonlat, dest_lonlat, units="naut", restrictions=[...])`,
+  `feature.properties["length"]` in nautical miles. Passage names: babalmandab, bosporus, gibraltar, suez,
+  panama, ormuz, northwest. Shanghai→Rotterdam: 10,546 nm with `["northwest"]`, 13,466 nm with
+  `["northwest","suez","babalmandab"]`. If no path exists the length is inf → store NULL.
+
+### Pipeline
+- Sources added to `config.SOURCES`:
+  - `PortWatch_ports_database` (2065 rows, dimension: portid, portname, country, lat, lon …) → `silver_dim_port`.
+  - `ports_top` = the statistics query above (bronze like other sources) → `silver_container_port_rank`.
+  - `Daily_Ports_Data` filtered with `where=portid IN (<selected ids>) [AND date >= trailing window]`
+    → `silver_port_daily` (dedupe/upsert by (portid,date) exactly like chokepoints; incremental from max(date) − 30 days).
+    Never fetch the full 5.86M-row table.
+- Port selection (`gold_container_ports`): top **60** by container calls over the last 365 days, plus the five
+  preset origins always included (Shanghai port1188, Singapore port1201, Rotterdam port1114,
+  Los Angeles-Long Beach port664, Tokyo port1305). Computed, not hand-picked; the preset ids are the only constants.
+  Columns: portid, portname, country, lat, lon, rank, calls_365d, ma7_container (latest 7-day mean of
+  portcalls_container, NULL until 7 observations), latest date.
+- OD matrix (`mlake od`, also run by `mlake all`): searoute for every ordered pair of selected ports × scenario.
+  Scenarios (ids are API):
+  - `open`: restrictions `["northwest"]` — "All canals open"
+  - `red_sea_closed`: `["northwest","suez","babalmandab"]` — "Red Sea / Suez closed (via Cape of Good Hope)"
+  - `panama_closed`: `["northwest","panama"]` — "Panama Canal closed"
+  Cache in `data/silver/container_od.parquet` (origin, dest, scenario, nm, searoute_version); only compute
+  pairs missing from the cache. Pairs are directional (store both).
+- `check`: add no duplicate (portid,date) in silver_port_daily; every selected port has lat/lon; OD has
+  no missing (origin,dest,scenario) for selected ports (NULL = no path is allowed and counted in the report).
+- Gold exports:
+  - `gold/container_ports.json`: list of the port rows above.
+  - `gold/container_od.json`: `{"speed_kn":16, "ports":[portid…], "scenarios":[{"id","label","restrictions"}],
+    "nm":{"<scenario>":[[…row per origin…]]}}` (integers, null for no path). Days are computed in the browser
+    as nm / (16 × 24) so the speed assumption lives in one visible place.
+- Tests (pytest): port selection (top-N + presets always present, dedupe), port silver upsert, OD cache reuse
+  (second run computes 0 pairs; searoute mocked), gold JSON shape.
+
+### Web: third tab "Container time map"
+- Rendering: canvas with d3-geo, d3-delaunay, topojson-client, land from `world-atlas@2.0.2` `land-50m.json`
+  (Natural Earth, public domain; credit "Natural Earth" in the footer). Not MapLibre.
+- Layout plane: `d3.geoAzimuthalEquidistant().rotate([-lon0, -lat0])` centred on the origin port, so every
+  point already sits at its true bearing and great-circle distance. Time space keeps each port's bearing and
+  sets its radius to sailing distance (nm) instead of great-circle distance (nm), same scale.
+- Coastline warp (piecewise-affine): control points = selected ports (geo position → time position),
+  the origin (fixed), and 24 anchors on the boundary ring (great-circle distance 10,800 nm) whose time radius is
+  10,800 × median(sailing/great-circle) over ports with a path. Delaunay-triangulate the geo positions; map every
+  land vertex by barycentric coordinates in its triangle. Folded triangles are acceptable visually but must
+  never produce NaN; a vertex outside the hull uses the nearest triangle. Ports with no path in a scenario are
+  drawn greyed at their geo position and excluded from the control points.
+- Animation: a "Geography ↔ Sailing time" toggle tweens t∈[0,1] over ~1.2 s (positions = lerp(geo, time, t)).
+  Respect `prefers-reduced-motion` (jump, no tween).
+- Controls: origin select (presets first, then all selected ports A–Z) and click a port to make it the origin;
+  scenario select. Hash state `#time=<portid>,<scenario>` so views are linkable.
+- Overlay: concentric rings every 10 days with labels ("10 days at 16 kn"), port markers (area ∝ ma7_container,
+  colour neutral), labels for presets and the top 15, hover/tap tooltip: port, country, sailing days from origin,
+  great-circle days, detour % (sailing / great-circle − 1).
+- Story hook: in the Red Sea story add a link "See it as a container: Shanghai → Europe with the Red Sea closed"
+  → `#time=port1188,red_sea_closed`. On the time map, when scenario ≠ open, show one sentence comparing the
+  origin's days to Rotterdam under `open` vs the scenario (computed, not hard-coded).
+- Fine print under the map: speed assumption, searoute-py credit, "routing is a modelled shortest sea path, not
+  actual liner schedules", PortWatch attribution.
+- Mobile: canvas fills width, controls stack above, tooltip on tap. Keep it 60 fps on a laptop (pre-project land
+  once per origin; per frame only lerp + draw).
+- Freight rates: Drewry WCI, Freightos FBX, SCFI have unclear reuse terms → do not ingest or redistribute.
+  Time is the cost proxy.
 
 ## Phase 1b / Phase 2 (not now)
 - 1b: R2 upload + public bucket/custom domain, deploy web Worker, ports table (Daily_Ports_Data), Iceberg via R2 catalog.
