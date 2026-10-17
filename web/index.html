@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>maritime-lake: shipping chokepoints</title>
+    <meta name="description" content="Open, reproducible data lakehouse and dashboard for global shipping chokepoints, built on IMF PortWatch." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%232b8cbe'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header id="top">
+      <div class="brand">
+        <strong>maritime-lake</strong>
+        <span class="tag">global shipping chokepoints</span>
+      </div>
+      <nav id="tabs" role="tablist" aria-label="Views">
+        <button role="tab" id="tab-map" aria-selected="true" data-view="map">Map</button>
+        <button role="tab" id="tab-story" aria-selected="false" data-view="story">Red Sea rerouting</button>
+      </nav>
+      <div class="fresh" id="fresh">loading&hellip;</div>
+    </header>
+
+    <main>
+      <div id="map" aria-label="Map of shipping chokepoints"></div>
+
+      <div id="legend" class="legend" aria-label="Legend">
+        <div class="legend-title">7-day mean transits vs 2019-2022 baseline</div>
+        <div class="legend-bar"></div>
+        <div class="legend-ticks"><span>-60%</span><span>0</span><span>+60%</span></div>
+        <div class="legend-note">Circle size = 7-day mean daily transits</div>
+      </div>
+
+      <aside id="panel" class="panel" hidden aria-live="polite">
+        <button id="panel-close" class="close" aria-label="Close panel">&times;</button>
+        <h2 id="panel-title"></h2>
+        <dl id="panel-stats" class="stats"></dl>
+        <div class="toggle" role="group" aria-label="Chart mode">
+          <button id="mode-total" aria-pressed="true">Total vs baseline</button>
+          <button id="mode-type" aria-pressed="false">By vessel type</button>
+        </div>
+        <div id="panel-chart" class="chart"></div>
+        <ul id="panel-events" class="events"></ul>
+      </aside>
+
+      <section id="story" class="story" hidden>
+        <div class="story-inner">
+          <h2>Red Sea rerouting</h2>
+          <p id="story-lede" class="lede"></p>
+          <div id="story-chart" class="chart big"></div>
+          <p class="fine">Index: 7-day mean daily transits divided by the 2019-2022 mean for the same calendar day (100 = baseline). Estimates derived from AIS data; they can be revised.</p>
+          <ul id="story-events" class="events"></ul>
+        </div>
+      </section>
+    </main>
+
+    <footer id="foot">
+      <span id="attribution"></span>
+      <a href="https://portwatch.imf.org/" target="_blank" rel="noopener">IMF PortWatch</a>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

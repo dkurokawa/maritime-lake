@@ -1,0 +1,97 @@
+:root {
+  --bg: #0e141b;
+  --panel: #151d27;
+  --panel-2: #1c2733;
+  --line: #2a3745;
+  --text: #e6edf3;
+  --muted: #93a1b0;
+  --accent: #5bb5e8;
+  --warn: #f4a259;
+  --gutter: 16px;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+header#top {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px var(--gutter); border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.brand strong { font-size: 16px; letter-spacing: .2px; }
+.brand .tag { color: var(--muted); margin-left: 8px; }
+nav { display: flex; gap: 4px; }
+nav button, .toggle button {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  padding: 5px 12px; border-radius: 6px; cursor: pointer; font: inherit;
+}
+nav button[aria-selected="true"], .toggle button[aria-pressed="true"] {
+  background: var(--panel-2); color: var(--text); border-color: var(--accent);
+}
+.fresh { margin-left: auto; color: var(--muted); font-size: 13px; }
+main { position: relative; flex: 1; min-height: 0; }
+#map { position: absolute; inset: 0; }
+footer#foot {
+  padding: 6px var(--gutter); border-top: 1px solid var(--line); background: var(--panel);
+  color: var(--muted); font-size: 12px; display: flex; gap: 12px; flex-wrap: wrap;
+}
+a { color: var(--accent); }
+
+.legend {
+  position: absolute; left: var(--gutter); bottom: 28px; background: rgba(21,29,39,.92);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 250px; z-index: 2;
+}
+.legend-title { font-size: 12px; margin-bottom: 6px; }
+.legend-bar { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #e66101, #fdb863, #e8e8e8, #92c5de, #2b8cbe); }
+.legend-ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.legend-note { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%;
+  background: var(--panel); border-left: 1px solid var(--line); padding: 14px var(--gutter);
+  overflow-y: auto; z-index: 3;
+}
+.panel[hidden], .story[hidden] { display: none; }
+.panel h2 { margin: 0 28px 8px 0; font-size: 18px; }
+.close {
+  position: absolute; top: 8px; right: 10px; background: none; border: 0; color: var(--muted);
+  font-size: 26px; cursor: pointer; line-height: 1;
+}
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.stats div { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; }
+.stats dt { font-size: 11px; color: var(--muted); }
+.stats dd { margin: 0; font-size: 17px; font-weight: 600; }
+.toggle { display: flex; gap: 4px; margin-bottom: 8px; }
+.chart { width: 100%; }
+.chart.big { min-height: 380px; }
+.events { list-style: none; padding: 0; margin: 10px 0 0; font-size: 13px; }
+.events li { border-top: 1px solid var(--line); padding: 8px 0; }
+.events .when { color: var(--muted); font-size: 12px; }
+.events .kind { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; padding: 1px 5px; border-radius: 3px; background: var(--panel-2); color: var(--warn); margin-right: 6px; }
+
+.story { position: absolute; inset: 0; background: var(--bg); overflow-y: auto; z-index: 4; }
+.story-inner { max-width: 960px; margin: 0 auto; padding: 20px var(--gutter) 40px; }
+.story h2 { margin: 0 0 6px; font-size: 22px; }
+.lede { color: var(--text); font-size: 15px; max-width: 70ch; }
+.fine { color: var(--muted); font-size: 12px; }
+
+/* uPlot theme bits */
+.u-legend { color: var(--text); font-size: 12px; }
+.u-legend .u-marker { border-radius: 2px; }
+
+.maplibregl-popup-content { background: var(--panel); color: var(--text); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.maplibregl-popup-tip { display: none; }
+
+@media (max-width: 720px) {
+  .brand .tag { display: none; }
+  .fresh { margin-left: 0; width: 100%; }
+  .panel {
+    top: auto; left: 0; right: 0; width: 100%; height: 62%;
+    border-left: 0; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+  }
+  .legend { width: 200px; bottom: auto; top: 8px; }
+}
