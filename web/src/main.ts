@@ -5,7 +5,7 @@ import {
   fmtNum, fmtPct, loadEvents, loadGeo, loadMeta, loadSeries,
   type ChokepointProps, type EventItem,
 } from "./data";
-import { indexChart, totalChart, typeChart, type ChartHandle, type IndexLine } from "./charts";
+import { baselineIndex, indexChart, totalChart, typeChart, type ChartHandle, type IndexLine } from "./charts";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -71,19 +71,15 @@ async function renderStory() {
   const [events, ...series] = await Promise.all([loadEvents(), ...STORY.lines.map((l) => loadSeries(l.id))]);
   const ev = events.find((e) => e.id === STORY.event);
   const lines: IndexLine[] = STORY.lines.map((l, i) => ({ name: l.name, color: l.color, series: series[i] }));
-  const last = (i: number) => {
-    const s = series[i];
-    const k = s.ma7_total.length - 1;
-    const v = s.ma7_total[k], b = s.baseline_ma7[k];
-    return v != null && b ? (100 * v) / b : null;
-  };
-  const cape = lines[2].series;
-  const idx = cape.ma7_total.map((v, i) => (v != null && cape.baseline_ma7[i] ? (100 * v) / (cape.baseline_ma7[i] as number) : -1));
-  const peak = Math.max(...idx);
-  const peakDate = cape.dates[idx.indexOf(peak)];
+  const idx = series.map((s) => baselineIndex(s));
+  const last = (i: number) => idx[i][idx[i].length - 1];
+  const cape = idx[2];
+  const peak = Math.max(...cape.map((v) => v ?? -1));
+  const peakDate = series[2].dates[cape.indexOf(peak)];
+  const latest = series[2].dates[series[2].dates.length - 1];
   $("story-lede").textContent =
     `Since Houthi attacks on shipping began in November 2023, transits through the Bab el-Mandeb Strait and the Suez Canal fell well below their 2019-2022 norm while the Cape of Good Hope route rose. ` +
-    `On the latest data day (${cape.dates[cape.dates.length - 1]}) the 7-day mean is at ${fmtNum(last(0))}% of baseline at Bab el-Mandeb, ${fmtNum(last(1))}% at Suez and ${fmtNum(last(2))}% at the Cape of Good Hope (peak ${fmtNum(peak)}% on ${peakDate}).`;
+    `Over the four weeks to the latest data day (${latest}), traffic ran at ${fmtNum(last(0))}% of baseline at Bab el-Mandeb, ${fmtNum(last(1))}% at Suez and ${fmtNum(last(2))}% at the Cape of Good Hope (4-week peak ${fmtNum(peak)}%, reached ${peakDate}).`;
   storyChart?.destroy();
   storyChart = indexChart($("story-chart"), lines, ev ? [ev] : []);
   $("story-events").innerHTML = ev ? eventLi(ev) : "";
@@ -114,8 +110,8 @@ async function init() {
   map = new maplibregl.Map({
     container: "map",
     style: "https://tiles.openfreemap.org/styles/dark",
-    center: [60, 22],
-    zoom: window.innerWidth < 720 ? 1.2 : 1.9,
+    center: [30, 15],
+    zoom: window.innerWidth < 720 ? 0 : 1.5,
     attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
@@ -124,6 +120,15 @@ async function init() {
 
   const [meta, geo] = await Promise.all([loadMeta(), loadGeo()]);
   geoProps = new Map(geo.features.map((f) => [f.properties.portid, f.properties]));
+  // Desktop: frame every chokepoint. Phones are narrower than the world at zoom 0,
+  // so centre on a view that still holds the Panama Canal and East Asia.
+  if (window.innerWidth < 720) {
+    map.jumpTo({ center: [30, 15], zoom: 0 });
+  } else {
+    const bounds = new maplibregl.LngLatBounds();
+    for (const f of geo.features) bounds.extend(f.geometry.coordinates as [number, number]);
+    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 3, duration: 0 });
+  }
   $("fresh").textContent = `Data through ${meta.data_max_date} (estimates, ~6 day lag) · built ${meta.built_at.slice(0, 10)}`;
   $("attribution").textContent = meta.attribution + " Modelled estimates; may be revised.";
 

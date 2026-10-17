@@ -80,31 +80,48 @@ def test_yoy(gold):
     assert row(gold, dt.date(2024, 2, 29))["yoy_pct"] == pytest.approx(expect_leap)
 
 
-def test_baseline_is_mean_of_2019_2022_same_day(gold):
+def raw_baseline(month: int, day: int):
+    """Per-calendar-day (mean, min, max) of ma7 over 2019-2022, skipping incomplete windows."""
+    vals = [ma7(dt.date(y, month, day)) for y in range(2019, 2023) if dt.date(y, month, day) >= dt.date(2019, 1, 7)]
+    return sum(vals) / len(vals), min(vals), max(vals)
+
+
+def smoothed_baseline(d: dt.date):
+    """Centred 15-day mean of raw_baseline over a non-leap calendar, wrapping Dec/Jan."""
+    if d.month == 2 and d.day == 29:
+        d = d.replace(day=28)
+    centre = dt.date(2001, d.month, d.day)
+    days = [centre + dt.timedelta(days=k) for k in range(-7, 8)]
+    days = [x.replace(year=2001) for x in days]  # wrap into the same non-leap year
+    raws = [raw_baseline(x.month, x.day) for x in days]
+    return tuple(sum(r[i] for r in raws) / len(raws) for i in range(3))
+
+
+def test_baseline_is_smoothed_mean_of_2019_2022(gold):
     d = dt.date(2024, 3, 1)
-    years = [dt.date(y, 3, 1) for y in range(2019, 2023)]
-    expect = sum(ma7(x) for x in years) / 4
+    mean, lo, hi = smoothed_baseline(d)
     r = row(gold, d)
-    assert r["baseline_ma7"] == pytest.approx(expect)
-    assert r["baseline_lo"] == pytest.approx(min(ma7(x) for x in years))
-    assert r["baseline_hi"] == pytest.approx(max(ma7(x) for x in years))
-    assert r["vs_baseline_pct"] == pytest.approx(100 * (ma7(d) / expect - 1))
+    assert r["baseline_ma7"] == pytest.approx(mean)
+    assert r["baseline_lo"] == pytest.approx(lo)
+    assert r["baseline_hi"] == pytest.approx(hi)
+    assert r["vs_baseline_pct"] == pytest.approx(100 * (ma7(d) / mean - 1))
+    # the window really averages neighbours: differs from the single-day mean
+    assert r["baseline_ma7"] != pytest.approx(raw_baseline(3, 1)[0], abs=1e-9)
 
 
 def test_feb29_maps_to_feb28_and_does_not_pollute_baseline(gold):
-    feb28_years = [dt.date(y, 2, 28) for y in range(2019, 2023)]
-    expect = sum(ma7(x) for x in feb28_years) / 4  # 2020-02-29 must not be averaged in
+    expect = smoothed_baseline(dt.date(2023, 2, 28))[0]  # 2020-02-29 is never a baseline input
     assert row(gold, dt.date(2024, 2, 28))["baseline_ma7"] == pytest.approx(expect)
     assert row(gold, dt.date(2024, 2, 29))["baseline_ma7"] == pytest.approx(expect)
-    # and the Feb 29 row itself exists in the baseline years (2020) but is not a baseline key
     assert row(gold, dt.date(2020, 2, 29))["baseline_ma7"] == pytest.approx(expect)
 
 
-def test_baseline_early_january_excludes_incomplete_ma7(gold):
-    # Jan 1-6 2019 have NULL ma7, so their baseline averages only 2020-2022
+def test_baseline_wraps_year_end_and_skips_incomplete_ma7(gold):
+    # Jan 3 window spans Dec 27 - Jan 10; Jan 1-6 2019 have NULL ma7 and are left out
     d = dt.date(2024, 1, 3)
-    expect = sum(ma7(dt.date(y, 1, 3)) for y in range(2020, 2023)) / 3
-    assert row(gold, d)["baseline_ma7"] == pytest.approx(expect)
+    assert row(gold, d)["baseline_ma7"] == pytest.approx(smoothed_baseline(d)[0])
+    d = dt.date(2023, 12, 30)
+    assert row(gold, d)["baseline_ma7"] == pytest.approx(smoothed_baseline(d)[0])
 
 
 def test_latest_one_row_per_chokepoint(gold):

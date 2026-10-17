@@ -2,10 +2,13 @@
 --
 --   ma7_total / ma7_capacity : trailing 7-day mean (NULL until 7 observations exist).
 --   yoy_pct                  : 100 * (ma7_total / ma7_total one calendar year earlier - 1).
---   baseline_ma7             : mean of ma7_total for the same month-day over 2019-2022.
+--   baseline_ma7             : mean of ma7_total for the same month-day over 2019-2022,
+--                              then smoothed with a centred 15-day window over the calendar
+--                              (wrapping Dec/Jan) so low-traffic chokepoints do not jitter.
 --                              Feb 29 rows are excluded from building the baseline and
 --                              look up the Feb 28 baseline.
---   baseline_lo / baseline_hi: min / max of those yearly ma7_total values (the "band").
+--   baseline_lo / baseline_hi: min / max of those yearly ma7_total values (the "band"),
+--                              smoothed with the same window.
 --   vs_baseline_pct          : 100 * (ma7_total / baseline_ma7 - 1).
 CREATE OR REPLACE TABLE gold_chokepoint_daily AS
 WITH base AS (
@@ -17,16 +20,29 @@ WITH base AS (
     FROM silver_chokepoint_daily s
     WINDOW w AS (PARTITION BY portid ORDER BY date RANGE BETWEEN INTERVAL 6 DAYS PRECEDING AND CURRENT ROW)
 ),
-baseline AS (
+raw_baseline AS (
     SELECT portid, md,
-           avg(ma7_total) AS baseline_ma7,
-           min(ma7_total) AS baseline_lo,
-           max(ma7_total) AS baseline_hi
+           -- day index 0..364 on a non-leap calendar
+           dayofyear(strptime('2001-' || md, '%Y-%m-%d')) - 1 AS doy,
+           avg(ma7_total) AS b_mean,
+           min(ma7_total) AS b_lo,
+           max(ma7_total) AS b_hi
     FROM base
     WHERE year BETWEEN 2019 AND 2022
       AND NOT (month(date) = 2 AND day(date) = 29)
       AND ma7_total IS NOT NULL
     GROUP BY portid, md
+),
+baseline AS (
+    SELECT c.portid, c.md,
+           avg(n.b_mean) AS baseline_ma7,
+           avg(n.b_lo)   AS baseline_lo,
+           avg(n.b_hi)   AS baseline_hi
+    FROM raw_baseline c
+    JOIN raw_baseline n
+      ON n.portid = c.portid
+     AND least(abs(n.doy - c.doy), 365 - abs(n.doy - c.doy)) <= 7
+    GROUP BY c.portid, c.md
 )
 SELECT
     b.date, b.year, b.portid, b.portname,

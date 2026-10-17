@@ -70,7 +70,8 @@ SQL models are readable on GitHub. Serving and realtime stay on Workers.
 ### Gold models
 - `chokepoint_daily`: silver + `ma7_total` (7-day trailing mean of n_total), `ma7_capacity`,
   `yoy_pct` (ma7_total vs same calendar date previous year), `baseline_ma7` (mean of ma7_total for the
-  same day-of-year over 2019–2022; Feb 29 maps to Feb 28), `vs_baseline_pct`.
+  same day-of-year over 2019–2022, smoothed with a centred 15-day calendar window that wraps Dec/Jan;
+  Feb 29 maps to Feb 28), `vs_baseline_pct`.
 - `chokepoint_latest`: one row per chokepoint at the latest date with the above + lat/lon.
 - Output for the web: `gold/chokepoints.geojson` (latest metrics as properties),
   `gold/series/<portid>.json` (date, n_total, n_by_type, ma7_total, baseline_ma7, capacity),

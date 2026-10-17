@@ -85,10 +85,13 @@ export interface ChartHandle {
   destroy(): void;
 }
 
-function mount(el: HTMLElement, opts: (w: number) => uPlot.Options, data: uPlot.AlignedData): ChartHandle {
+/** hideInLegend: series indexes that only exist to draw a band and should not get a legend row. */
+function mount(el: HTMLElement, opts: (w: number) => uPlot.Options, data: uPlot.AlignedData, hideInLegend: number[] = []): ChartHandle {
   el.innerHTML = "";
   const w = Math.max(el.clientWidth, 280);
   const plot = new uPlot(opts(w), data, el);
+  const rows = plot.root.querySelectorAll<HTMLElement>(".u-legend .u-series");
+  for (const i of hideInLegend) if (rows[i]) rows[i].style.display = "none";
   const ro = new ResizeObserver(() => plot.setSize({ width: Math.max(el.clientWidth, 280), height: plot.height }));
   ro.observe(el);
   return {
@@ -123,6 +126,7 @@ export function totalChart(el: HTMLElement, s: Series, events: EventItem[]): Cha
       plugins: [eventsPlugin(events)],
     }),
     data,
+    [3, 4],
   );
 }
 
@@ -171,6 +175,7 @@ export function typeChart(el: HTMLElement, s: Series, events: EventItem[]): Char
       plugins: [eventsPlugin(events)],
     }),
     data,
+    [series.length - 1],
   );
 }
 
@@ -180,16 +185,35 @@ export interface IndexLine {
   series: Series;
 }
 
-/** Red Sea story: 7-day mean as % of the 2019-2022 baseline, several chokepoints on one chart. */
+export const STORY_WINDOW_DAYS = 28;
+
+/**
+ * Daily transits as % of the 2019-2022 baseline, averaged over a trailing window
+ * (NULL until the window is complete). 7-day means at low-traffic chokepoints are
+ * noisy; the story is about multi-month shifts, so it reads a 4-week average.
+ */
+export function baselineIndex(s: Series, windowDays = STORY_WINDOW_DAYS): (number | null)[] {
+  const daily = s.ma7_total.map((v, i) => {
+    const b = s.baseline_ma7[i];
+    return v == null || b == null || b <= 0 ? null : (100 * v) / b;
+  });
+  return daily.map((_, i) => {
+    if (i < windowDays - 1) return null;
+    let sum = 0;
+    for (let k = i - windowDays + 1; k <= i; k++) {
+      const v = daily[k];
+      if (v == null) return null;
+      sum += v;
+    }
+    return sum / windowDays;
+  });
+}
+
+/** Red Sea story: baseline index (see baselineIndex), several chokepoints on one chart. */
 export function indexChart(el: HTMLElement, lines: IndexLine[], events: EventItem[]): ChartHandle {
   const base = lines[0].series;
   const x = base.dates.map(toSec);
-  const cols = lines.map((l) =>
-    l.series.ma7_total.map((v, i) => {
-      const b = l.series.baseline_ma7[i];
-      return v == null || b == null || b <= 0 ? null : (100 * v) / b;
-    }),
-  );
+  const cols = lines.map((l) => baselineIndex(l.series));
   const data = [x, ...cols] as uPlot.AlignedData;
   return mount(
     el,
