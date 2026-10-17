@@ -1,0 +1,36 @@
+# Curated geopolitical / structural events that PortWatch's disruption table (natural
+# disasters only) does not hold.
+#
+# Rule: an event is listed only if its dates were verified against `source_url` by
+# fetching that page. `verified` records the date of that check; `date_basis` says which
+# sentence of the source the dates come from. Fewer verified events beat many unverified ones.
+events:
+  - id: ever-given-suez-blockage
+    title: Ever Given blocks the Suez Canal
+    start: 2021-03-23
+    end: 2021-03-29
+    chokepoints: [chokepoint1]
+    summary: The container ship Ever Given ran aground on 23 March 2021 and was refloated on 29 March, when the canal reopened.
+    source_url: https://en.wikipedia.org/wiki/2021_Suez_Canal_obstruction
+    date_basis: "Ran aground 23 March 2021; pulled free and canal reopened 29 March 2021 (CBS/AP, https://www.cbsnews.com/amp/news/suez-canal-ship-stuck-ever-given-unstuck, confirms 29 March refloating and reopening)."
+    verified: 2026-10-17
+
+  - id: panama-drought-restrictions
+    title: Panama Canal drought restrictions
+    start: 2023-07-30
+    end: 2024-09-01
+    chokepoints: [chokepoint2]
+    summary: Drought forced reduced daily transit slots (32 per day from 30 July 2023, down to 18 from 1 February 2024); reserved slots were back at 36 per day from 1 September 2024.
+    source_url: https://maritime-executive.com/article/panama-canal-plans-to-cut-transits-by-40-due-to-ongoing-drought
+    date_basis: "Start: 32 daily transits since 30 July 2023 and the step-down schedule to 18 on 1 Feb 2024 (Maritime Executive, 31 Oct 2023). End: 36 daily reserved slots from 1 Sep 2024 (AJOT, 21 Aug 2024, https://www.ajot.com/news/panama-canal-celebrates-110-years-of-trust-and-progress). The start marks the first slot cut documented in these sources, not the first drought measure (draft limits were tightened earlier in 2023; that date was not verified)."
+    verified: 2026-10-17
+
+  - id: red-sea-houthi-attacks
+    title: Houthi attacks on Red Sea shipping
+    start: 2023-11-19
+    end: null
+    chokepoints: [chokepoint4, chokepoint1, chokepoint7]
+    summary: Houthi forces seized the vehicle carrier Galaxy Leader on 19 November 2023, the start of the campaign that pushed carriers to reroute via the Cape of Good Hope.
+    source_url: https://www.adn.com/nation-world/2023/11/19/yemens-houthi-rebels-hijack-an-israeli-linked-ship-in-the-red-sea-and-take-25-crew-members-hostage/
+    date_basis: "AP report published 20 Nov 2023: seizure on Sunday 19 Nov 2023. The source does not describe the later rerouting; that is what the traffic data shows. No end date is set."
+    verified: 2026-10-17
