@@ -1,0 +1,38 @@
+name: daily
+on:
+  schedule:
+    - cron: "30 6 * * *" # PortWatch lags ~6 days; once a day is plenty
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Restore data lake (bronze/silver) cache
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: lake-${{ github.run_id }}
+          restore-keys: lake-
+      - name: Run pipeline (incremental when silver exists)
+        run: uv run mlake all
+      - name: Tests
+        run: uv run pytest -q
+      - name: Upload silver + gold to R2
+        # Skipped unless R2 secrets exist (Phase 1b).
+        if: env.R2_ACCESS_KEY_ID != ''
+        run: |
+          pip install awscli
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          aws s3 sync data/silver "s3://$R2_BUCKET/silver" --endpoint-url "$R2_ENDPOINT" --delete
+          aws s3 sync data/gold "s3://$R2_BUCKET/gold" --endpoint-url "$R2_ENDPOINT" --delete
