@@ -103,6 +103,28 @@ pages. Fewer verified events beat many unverified ones.
   secrets exist (`if: env.R2_ACCESS_KEY_ID != ''`).
 - Tests: pytest for SQL models on a small fixture (ma7, yoy, baseline, Feb 29 mapping, dedupe/upsert).
 
+## Phase 1c — "The container's world" (time-space map)  [after Phase 1 review]
+
+Container shipping is the hidden revolution of the modern economy. Show the world as a container
+sees it: a map distorted so that distance = sailing time from a chosen port.
+
+- **Time-space map**: user picks an origin port (default Shanghai; presets Rotterdam, Singapore,
+  Los Angeles, Tokyo). Every other major container port moves to its geographic bearing from the origin
+  at a radius proportional to sailing days. Coastlines warp with them (piecewise-affine warp over a
+  Delaunay triangulation of port control points + fixed far-field anchors; Natural Earth 1:50m land).
+  Animated morph between geographic and time space.
+- **Scenario toggle**: "Suez/Red Sea open" vs "via Cape of Good Hope" (and Panama restricted). The map
+  visibly stretches Europe away from Asia. Link the scenario to the PortWatch Red Sea story view.
+- **Sailing time** = sea-route distance (searoute-py, Apache-2.0; verify its passage-restriction option
+  names) ÷ assumed service speed (16 kn, shown in the UI as an assumption). Precomputed OD matrix for
+  ~50 container ports × scenarios in the pipeline → `gold/container_od.json`.
+- **Port activity**: PortWatch `Daily_Ports_Data` filtered to the selected ~50 container ports only
+  (`where=portid IN (...)`, ~140k rows; not the 5.86M full table). Marker size = ma7 of container calls.
+  Port list: top container ports by PortWatch container calls over the last 365 days (computed, not hand-picked).
+- **Cost**: freight-rate indices (Drewry WCI, Freightos FBX, SCFI) have unclear reuse terms → do not
+  ingest or redistribute. Time is the cost proxy. At most, link to the public index pages in the story text.
+- Rendering: d3-geo + canvas/SVG (not MapLibre) for this view. Mobile works.
+
 ## Phase 1b / Phase 2 (not now)
 - 1b: R2 upload + public bucket/custom domain, deploy web Worker, ports table (Daily_Ports_Data), Iceberg via R2 catalog.
 - 2: Durable Object holds the AISStream socket for bounding boxes of ~6 chokepoints, keeps last position per MMSI,
