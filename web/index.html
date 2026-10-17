@@ -16,6 +16,7 @@
       <nav id="tabs" role="tablist" aria-label="Views">
         <button role="tab" id="tab-map" aria-selected="true" data-view="map">Map</button>
         <button role="tab" id="tab-story" aria-selected="false" data-view="story">Red Sea rerouting</button>
+        <button role="tab" id="tab-time" aria-selected="false" data-view="time">Container time map</button>
       </nav>
       <div class="fresh" id="fresh">loading&hellip;</div>
     </header>
@@ -49,13 +50,33 @@
           <div id="story-chart" class="chart big"></div>
           <p class="fine">Index: 7-day mean daily transits divided by the 2019-2022 mean around the same calendar day (100 = baseline), averaged over the trailing four weeks. Estimates derived from AIS data; they can be revised.</p>
           <ul id="story-events" class="events"></ul>
+          <p class="story-link"><a href="#time=port1188,red_sea_closed">See it as a container: Shanghai &rarr; Europe with the Red Sea closed</a></p>
         </div>
+      </section>
+
+      <section id="timemap" class="timemap" hidden>
+        <div class="tm-controls">
+          <label>Origin <select id="tm-origin"></select></label>
+          <label>Scenario <select id="tm-scenario"></select></label>
+          <div class="toggle" role="group" aria-label="Map space">
+            <button id="tm-geo" aria-pressed="false">Geography</button>
+            <button id="tm-time" aria-pressed="true">Sailing time</button>
+          </div>
+        </div>
+        <p id="tm-note" class="tm-note" aria-live="polite"></p>
+        <div class="tm-stage">
+          <canvas id="tm-canvas" role="img" aria-label="Map in which the distance from the origin port is sailing time"></canvas>
+          <div id="tm-tip" class="tm-tip" hidden></div>
+          <div id="tm-msg" class="tm-msg" hidden></div>
+        </div>
+        <p class="fine" id="tm-fine"></p>
       </section>
     </main>
 
     <footer id="foot">
       <span id="attribution"></span>
       <a href="https://portwatch.imf.org/" target="_blank" rel="noopener">IMF PortWatch</a>
+      <span>Land: <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a></span>
     </footer>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -67,3 +67,34 @@ export const fmtPct = (v: number | null | undefined, digits = 0) =>
   v == null ? "n/a" : `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
 export const fmtNum = (v: number | null | undefined, digits = 0) =>
   v == null ? "n/a" : v.toLocaleString("en-US", { maximumFractionDigits: digits });
+
+// ---- container time map (Phase 1c) ----
+
+export interface ContainerPort {
+  portid: string;
+  portname: string;
+  country: string | null;
+  lat: number;
+  lon: number;
+  rank: number | null;
+  calls_365d: number | null;
+  ma7_container: number | null;
+  latest_date: string | null;
+}
+
+export interface ScenarioDef {
+  id: string;
+  label: string;
+  restrictions: string[];
+}
+
+export interface ContainerOD {
+  speed_kn: number;
+  ports: string[];
+  scenarios: ScenarioDef[];
+  /** nm[scenario][origin index][destination index]; null = no sea path */
+  nm: Record<string, (number | null)[][]>;
+}
+
+export const loadContainerPorts = () => getJSON<ContainerPort[]>("/data/container_ports.json");
+export const loadContainerOD = () => getJSON<ContainerOD>("/data/container_od.json");

@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import { createReadStream, existsSync, statSync, cpSync } from "node:fs";
 import { resolve, join, normalize } from "node:path";
 
-const GOLD = resolve(import.meta.dirname, "../data/gold");
+const GOLD = process.env.MLAKE_DATA_DIR ? resolve(process.env.MLAKE_DATA_DIR, "gold") : resolve(import.meta.dirname, "../data/gold");
 
 /** Dev: serve ../data/gold at /data. Build: copy it into dist/data. */
 function goldData(): Plugin {

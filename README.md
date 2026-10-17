@@ -14,6 +14,20 @@ attacks: Bab el-Mandeb and Suez down, Cape of Good Hope up).
 |---|---|
 | ![Bab el-Mandeb panel](docs/screenshots/chokepoint-panel.png) | ![Red Sea story](docs/screenshots/red-sea-story.png) |
 
+### The container's world (time map)
+
+The third tab redraws the world as a container sees it: distance from a chosen port is **sailing time**, and the
+coastlines are warped to match. Pick an origin port (or click one), switch the scenario (all canals open, Red Sea / Suez
+closed, Panama closed) and fold the map between geography and sailing time. The Red Sea story links straight into
+`#time=port1188,red_sea_closed`.
+
+| Geography | Sailing time from Shanghai | Red Sea closed | Mobile |
+|---|---|---|---|
+| ![Geography](docs/screenshots/time-map-geo.png) | ![Sailing time](docs/screenshots/time-map-time.png) | ![Red Sea closed](docs/screenshots/time-map-red-sea.png) | ![Mobile](docs/screenshots/time-map-mobile.png) |
+
+Routing is a modelled shortest sea path (searoute-py) at an assumed 16 knots, not actual liner schedules. No freight
+rates are used or redistributed (Drewry WCI, Freightos FBX and SCFI have unclear reuse terms); time is the cost proxy.
+
 Other dashboards publish charts but not the code. This repo publishes the code, the data model and the derived data.
 
 ## Quickstart
@@ -21,11 +35,11 @@ Other dashboards publish charts but not the code. This repo publishes the code, 
 Requirements: [uv](https://docs.astral.sh/uv/) and Node 20+.
 
 ```bash
-uv run mlake all              # ingest + build + check (first run: full load, ~100 s for ~80k rows)
+uv run mlake all              # ingest + build + od + check (first run is a full load: ~80k chokepoint rows plus ~180k port rows, several minutes)
 cd web && npm install && npm run dev
 ```
 
-Individual steps: `uv run mlake ingest [--full]`, `uv run mlake build`, `uv run mlake check`. Tests: `uv run pytest`.
+Individual steps: `uv run mlake ingest [--full]`, `uv run mlake build`, `uv run mlake od`, `uv run mlake check`. Tests: `uv run pytest`.
 The first run is a full load; later runs re-fetch the trailing 30 days and upsert them (values are modelled
 estimates and get revised). `npm run build` writes `web/dist/` and copies `data/gold` into `dist/data`.
 
@@ -45,7 +59,7 @@ Batch work is Python + DuckDB on purpose: it is the lingua franca of the target 
 readable SQL file in [`pipeline/sql/`](pipeline/sql). Serving and (Phase 2) realtime stay on Cloudflare Workers.
 
 ```
-pipeline/mlake/   ingest.py build.py check.py models.py cli.py
+pipeline/mlake/   ingest.py build.py od.py check.py models.py cli.py
 pipeline/sql/     silver_*.sql gold_*.sql  (one model per file)
 events/events.yaml
 tests/            pytest on a synthetic fixture
@@ -62,11 +76,18 @@ Fetched from the IMF PortWatch ArcGIS FeatureServer (no key; `maxRecordCount` 10
 | `Daily_Chokepoints_Data` | 79,548 | daily transits and estimated trade volume, 28 chokepoints since 2019-01-01 |
 | `PortWatch_chokepoints_database` | 28 | chokepoint dimension (name, lat, lon) |
 | `portwatch_disruptions_database` | 132 | natural-disaster events (TC/EQ/FL...), not geopolitical |
+| `PortWatch_ports_database` | 2,065 | port dimension (name, country, lat, lon) for the time map |
+| `Daily_Ports_Data` (statistics query) | top ~1000 ports | container port calls per port over the last 365 days, one server-side `outStatistics` request: used only to rank ports |
+| `Daily_Ports_Data` (filtered) | ~65 ports, ~180k rows | daily port calls for the selected container ports only (`where=portid IN (...)`); the full 5.9M-row table is never fetched |
 
 Data lags about six days. Values are modelled estimates derived from AIS data and can be revised.
 
 **Required attribution** (PortWatch dataset page, "How to Cite"): "Sources: UN Global Platform; IMF PortWatch (portwatch.imf.org)."
 The dashboard footer and `gold/meta.json` carry this line.
+
+Other credits for the time map: coastlines from [Natural Earth](https://www.naturalearthdata.com/) (public domain, via
+`world-atlas@2.0.2`); sea routes from [searoute-py](https://github.com/genthalili/searoute-py) (Apache-2.0), which builds on
+the Eurostat/Marnet shipping-lane network. Rendering uses d3-geo, d3-delaunay and topojson-client (ISC / BSD).
 
 ### Terms of use (checked 2026-10-17)
 
@@ -104,6 +125,19 @@ on all 79,548 rows), `capacity` = sum of type capacities within +/-5 t (componen
 source; verified max difference 4 t), no nulls, 28 chokepoints, a common end date, and the silver row count never
 shrinking between builds.
 
+### Container time map tables
+
+- **silver** `port_daily` (hive-partitioned by `year`), `dim_port.parquet`, `container_port_rank.parquet`.
+- **gold** `container_ports` (the selected ports: top 60 by container calls over 365 days plus five preset origins
+  Shanghai, Singapore, Rotterdam, Los Angeles-Long Beach, Tokyo; with `rank`, `calls_365d`, `ma7_container`) and
+  `container_od`. The selection is computed (`gold_container_port_selection.sql`), only the preset ids are constants.
+- `uv run mlake od` runs searoute for every ordered pair of selected ports under three scenarios (restrictions
+  `["northwest"]`, `["northwest","suez","babalmandab"]`, `["northwest","panama"]`) and caches nautical miles in
+  `data/silver/container_od.parquet`; re-runs only compute missing pairs. NULL means no path. `gold/container_od.json`
+  holds the matrices as integers; days are computed in the browser as nm / (16 x 24).
+- Checks added to `mlake check`: no duplicate `(portid, date)` in `silver_port_daily`, every selected port has lat/lon
+  and daily data, the OD cache has every `(origin, dest, scenario)` for the selected ports (no-path pairs are counted in the report).
+
 ### Curated events
 
 `events/events.yaml` holds geopolitical events PortWatch's table lacks. An event is listed only if its dates were
@@ -122,7 +156,7 @@ LIMIT 10;
 
 ## Roadmap
 
-Phase 1 (this): local pipeline, dashboard. Phase 1b: R2 upload and public bucket, deploy the web Worker, ports table.
+Phase 1 (this): local pipeline, dashboard, container time map (1c). Phase 1b: R2 upload and public bucket, deploy the web Worker, ports table.
 Phase 2: live AIS around selected chokepoints via a Durable Object relay. See [DESIGN.md](DESIGN.md).
 
 ## Licence

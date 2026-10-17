@@ -5,6 +5,7 @@ import {
   fmtNum, fmtPct, loadEvents, loadGeo, loadMeta, loadSeries,
   type ChokepointProps, type EventItem,
 } from "./data";
+import { hideTimeMap, showTimeMap, updateTimeMapSpec } from "./timemap";
 import { baselineIndex, indexChart, totalChart, typeChart, type ChartHandle, type IndexLine } from "./charts";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -24,14 +25,20 @@ let mode: "total" | "type" = "total";
 let storyChart: ChartHandle | null = null;
 let geoProps = new Map<string, ChokepointProps>();
 
-function showView(view: "map" | "story") {
-  $("tab-map").setAttribute("aria-selected", String(view === "map"));
-  $("tab-story").setAttribute("aria-selected", String(view === "story"));
+type View = "map" | "story" | "time";
+
+function showView(view: View, spec?: string) {
+  for (const v of ["map", "story", "time"] as const) $(`tab-${v}`).setAttribute("aria-selected", String(v === view));
   $("story").hidden = view !== "story";
-  $("legend").style.display = view === "story" ? "none" : "";
+  $("legend").style.display = view === "map" ? "" : "none";
+  if (view !== "time") hideTimeMap();
   if (view === "story") {
     $("panel").hidden = true;
     void renderStory();
+  } else if (view === "time") {
+    $("panel").hidden = true;
+    void showTimeMap(spec); // sets its own hash
+    return;
   } else {
     map.resize();
   }
@@ -87,7 +94,7 @@ async function renderStory() {
 
 function bindUI() {
   document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach((b) =>
-    b.addEventListener("click", () => showView(b.dataset.view as "map" | "story")),
+    b.addEventListener("click", () => showView(b.dataset.view as View)),
   );
   $("panel-close").addEventListener("click", () => {
     $("panel").hidden = true;
@@ -174,9 +181,18 @@ async function init() {
     if (id) void renderPanel(id);
   });
 
+  route();
+  window.addEventListener("hashchange", () => route(true));
+}
+
+function route(fromLink = false) {
   const h = location.hash;
   if (h === "#story") showView("story");
-  else if (h.startsWith("#cp=")) void renderPanel(h.slice(4));
+  else if (h.startsWith("#time")) {
+    if (fromLink && !$("timemap").hidden) updateTimeMapSpec(h.slice(6));
+    else showView("time", h.slice(6));
+  } else if (h.startsWith("#cp=")) void renderPanel(h.slice(4));
+  else if (fromLink) showView("map");
 }
 
 init().catch((err) => {
