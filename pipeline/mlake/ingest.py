@@ -19,7 +19,7 @@ def _query_url(name: str) -> str:
     return f"{config.ARCGIS_BASE}/{name}/FeatureServer/0/query"
 
 
-def _get(client: httpx.Client, url: str, params: dict, retries: int = 5) -> dict:
+def _get(client: httpx.Client, url: str, params: dict, retries: int = 7) -> dict:
     delay = 2.0
     for attempt in range(retries):
         try:
