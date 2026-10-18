@@ -80,6 +80,10 @@ def selected_ports_from_bronze(rank_dir: Path) -> list[str]:
     return select_ports(con)
 
 
+def _in(ports: list[str]) -> str:
+    return "portid IN (" + ", ".join(f"'{p}'" for p in ports) + ")"
+
+
 def silver_port_state() -> tuple[dt.date, set[str]] | None:
     files = glob.glob(str(config.SILVER / "port_daily" / "year=*" / "*.parquet"))
     if not files:
@@ -90,8 +94,8 @@ def silver_port_state() -> tuple[dt.date, set[str]] | None:
     return d, ids
 
 
-def fetch_source(client: httpx.Client, name: str, out_dir: Path, where: str = "1=1") -> int:
-    """Paginate one source into out_dir/page-NNNN.json.gz. Returns feature count."""
+def fetch_source(client: httpx.Client, name: str, out_dir: Path, where: str = "1=1", prefix: str = "") -> int:
+    """Paginate one source into out_dir/page-<prefix>NNNN.json.gz. Returns feature count."""
     out_dir.mkdir(parents=True, exist_ok=True)
     offset, page, total = 0, 0, 0
     while True:
@@ -106,7 +110,7 @@ def fetch_source(client: httpx.Client, name: str, out_dir: Path, where: str = "1
         }
         body = _get(client, _query_url(name), params)
         feats = body.get("features", [])
-        with gzip.open(out_dir / f"page-{page:04d}.json.gz", "wt", encoding="utf-8") as fh:
+        with gzip.open(out_dir / f"page-{prefix}{page:04d}.json.gz", "wt", encoding="utf-8") as fh:
             json.dump({"features": feats}, fh)
         total += len(feats)
         page += 1
@@ -147,17 +151,23 @@ def run(full: bool = False) -> dict[str, int]:
                 print(f"  selected {len(selected)} ports (top {config.TOP_PORTS} + presets)")
                 continue
             if meta.get("mode") == "selected_ports":
-                where = "portid IN (" + ", ".join(f"'{p}'" for p in selected) + ")"
-                mode = f"{len(selected)} selected ports"
+                out = config.BRONZE / meta["bronze"] / f"run={run_id}"
                 have = None if full else silver_port_state()
-                # incremental only when every selected port already has history in silver
-                if have is not None and set(selected) <= have[1]:
+                known = [p for p in selected if have is not None and p in have[1]]
+                new = [p for p in selected if p not in known]
+                n = 0
+                # ports already in silver: trailing window only; ports new to the selection: full history
+                if known:
                     since = have[0] - dt.timedelta(days=config.TRAILING_WINDOW_DAYS)
-                    where += f" AND date >= DATE '{since.isoformat()}'"
-                    mode += f", incremental since {since}"
-                else:
-                    mode += ", full history"
-            elif meta["incremental_field"] and max_date is not None:
+                    print(f"ingest {name}: {len(known)} known ports, incremental since {since}")
+                    n += fetch_source(client, name, out, f"{_in(known)} AND date >= DATE '{since.isoformat()}'", "inc-")
+                if new:
+                    print(f"ingest {name}: {len(new)} new ports, full history")
+                    n += fetch_source(client, name, out, _in(new), "full-")
+                print(f"  {n} rows -> {out}")
+                counts[name] = n
+                continue
+            if meta["incremental_field"] and max_date is not None:
                 since = max_date - dt.timedelta(days=config.TRAILING_WINDOW_DAYS)
                 where = f"{meta['incremental_field']} >= DATE '{since.isoformat()}'"
                 mode = f"incremental since {since}"

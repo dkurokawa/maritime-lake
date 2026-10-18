@@ -61,6 +61,8 @@ let raf = 0;
 let hover = -1;
 let armed = -1; // touch: port whose tooltip is open; a second tap makes it the origin
 let started = false;
+let bound = false;
+let foldTimer = 0; // arrival fold into sailing time; cancelled by any explicit toggle or hide
 let canvas: HTMLCanvasElement;
 let ctx: CanvasRenderingContext2D;
 let cssW = 0;
@@ -426,6 +428,7 @@ function updateNote() {
 }
 
 function setTarget(to: 0 | 1) {
+  window.clearTimeout(foldTimer);
   target = to;
   $("tm-geo").setAttribute("aria-pressed", String(to === 0));
   $("tm-time").setAttribute("aria-pressed", String(to === 1));
@@ -571,7 +574,7 @@ export async function showTimeMap(spec?: string) {
   const msg = $("tm-msg");
   if (!started) {
     started = true;
-    bind();
+    if (!bound) { bind(); bound = true; } // a failed load retries without re-binding listeners
     try {
       await load();
     } catch (err) {
@@ -591,10 +594,12 @@ export async function showTimeMap(spec?: string) {
   $("tm-geo").setAttribute("aria-pressed", "true");
   $("tm-time").setAttribute("aria-pressed", "false");
   draw();
-  window.setTimeout(() => setTarget(1), reducedMotion() ? 0 : 500);
+  window.clearTimeout(foldTimer);
+  foldTimer = window.setTimeout(() => setTarget(1), reducedMotion() ? 0 : 500);
 }
 
 export function hideTimeMap() {
+  window.clearTimeout(foldTimer);
   cancelAnimationFrame(raf);
   $("timemap").hidden = true;
 }
