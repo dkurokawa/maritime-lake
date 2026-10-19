@@ -1,7 +1,9 @@
 name: daily
 on:
-  schedule:
-    - cron: "30 6 * * *" # PortWatch lags ~6 days; once a day is plenty
+  # The daily schedule stays off until the IMF grants permission for automated download
+  # (their terms prohibit bulk download by automated technology without explicit permission).
+  # schedule:
+  #   - cron: "30 6 * * *" # PortWatch lags ~6 days; once a day is plenty
   workflow_dispatch:
 
 permissions:
