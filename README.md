@@ -1,5 +1,7 @@
 # maritime-lake
 
+[![CI](https://github.com/dkurokawa/maritime-lake/actions/workflows/ci.yml/badge.svg)](https://github.com/dkurokawa/maritime-lake/actions/workflows/ci.yml)
+
 An open, reproducible data lakehouse for global shipping chokepoints, with a public dashboard as its front page.
 
 The main deliverable is the **pipeline**, not the map: clone the repo, run one command, and you rebuild the same

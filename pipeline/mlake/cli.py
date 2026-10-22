@@ -10,9 +10,13 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="mlake", description="maritime-lake pipeline")
     sub = p.add_subparsers(dest="cmd", required=True)
     pi = sub.add_parser("ingest", help="fetch PortWatch sources into bronze")
-    pi.add_argument("--full", action="store_true", help="ignore existing silver and reload everything")
+    pi.add_argument(
+        "--full", action="store_true", help="ignore existing silver and reload everything"
+    )
     sub.add_parser("build", help="bronze -> silver -> gold")
-    sub.add_parser("od", help="searoute OD matrix for the container time map (cached; needs `build` first)")
+    sub.add_parser(
+        "od", help="searoute OD matrix for the container time map (cached; needs `build` first)"
+    )
     sub.add_parser("check", help="data quality checks (non-zero exit on failure)")
     pa = sub.add_parser("all", help="ingest + build + od + check")
     pa.add_argument("--full", action="store_true")

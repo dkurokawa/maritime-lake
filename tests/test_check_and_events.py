@@ -4,7 +4,6 @@ import datetime as dt
 from pathlib import Path
 
 import duckdb
-
 from mlake import build, check
 from test_models import make_silver
 
@@ -29,13 +28,18 @@ def test_check_detects_gap():
 
 def test_check_detects_duplicate():
     con = silver_con()
-    con.execute("INSERT INTO silver_chokepoint_daily SELECT * FROM silver_chokepoint_daily WHERE date = DATE '2020-01-01'")
+    con.execute(
+        "INSERT INTO silver_chokepoint_daily SELECT * FROM silver_chokepoint_daily WHERE "
+        "date = DATE '2020-01-01'"
+    )
     assert results(con)["no duplicate (portid, date)"] is False
 
 
 def test_check_detects_broken_total_invariant():
     con = silver_con()
-    con.execute("UPDATE silver_chokepoint_daily SET n_total = n_total + 1 WHERE date = DATE '2020-01-01'")
+    con.execute(
+        "UPDATE silver_chokepoint_daily SET n_total = n_total + 1 WHERE date = DATE '2020-01-01'"
+    )
     assert results(con)["n_total = sum of vessel-type counts"] is False
 
 

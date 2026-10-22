@@ -1,15 +1,17 @@
 """bronze -> silver -> gold."""
+
 from __future__ import annotations
 
 import datetime as dt
 import json
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import yaml
 
 from . import config
-from .models import run_model
+from .models import run_model, scalar
 
 GOLD_SERIES_FIELDS = ["n_container", "n_dry_bulk", "n_general_cargo", "n_roro", "n_tanker"]
 
@@ -31,10 +33,15 @@ def build_silver(con: duckdb.DuckDBPyConnection) -> None:
         f"COPY (SELECT * FROM silver_chokepoint_daily) TO '{out / 'chokepoint_daily'}' "
         "(FORMAT parquet, PARTITION_BY (year), OVERWRITE_OR_IGNORE)"
     )
-    con.execute(f"COPY silver_dim_chokepoint TO '{out / 'dim_chokepoint.parquet'}' (FORMAT parquet)")
+    con.execute(
+        f"COPY silver_dim_chokepoint TO '{out / 'dim_chokepoint.parquet'}' (FORMAT parquet)"
+    )
     con.execute(f"COPY silver_disruptions TO '{out / 'disruptions.parquet'}' (FORMAT parquet)")
     con.execute(f"COPY silver_dim_port TO '{out / 'dim_port.parquet'}' (FORMAT parquet)")
-    con.execute(f"COPY silver_container_port_rank TO '{out / 'container_port_rank.parquet'}' (FORMAT parquet)")
+    con.execute(
+        f"COPY silver_container_port_rank TO '{out / 'container_port_rank.parquet'}' "
+        "(FORMAT parquet)"
+    )
     con.execute(
         f"COPY (SELECT * FROM silver_port_daily) TO '{out / 'port_daily'}' "
         "(FORMAT parquet, PARTITION_BY (year), OVERWRITE_OR_IGNORE)"
@@ -45,7 +52,8 @@ def build_gold_tables(con: duckdb.DuckDBPyConnection) -> None:
     run_model(con, "gold_chokepoint_daily")
     run_model(con, "gold_chokepoint_latest")
     run_model(
-        con, "gold_container_port_selection",
+        con,
+        "gold_container_port_selection",
         top_n=str(config.TOP_PORTS),
         preset_ids=", ".join(f"'{p}'" for p in config.PRESET_PORTS),
     )
@@ -55,32 +63,43 @@ def build_gold_tables(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def load_container_od(con: duckdb.DuckDBPyConnection) -> None:
-    """Expose the searoute cache (written by `mlake od`) as silver_container_od; empty if not computed yet."""
+    """Expose the searoute cache (written by `mlake od`) as silver_container_od.
+
+    Empty if not computed yet.
+    """
     path = config.SILVER / "container_od.parquet"
     if path.exists():
-        con.execute(f"CREATE OR REPLACE TABLE silver_container_od AS SELECT * FROM read_parquet('{path}')")
+        con.execute(
+            f"CREATE OR REPLACE TABLE silver_container_od AS SELECT * FROM read_parquet('{path}')"
+        )
     else:
         con.execute(
-            "CREATE OR REPLACE TABLE silver_container_od (origin VARCHAR, dest VARCHAR, scenario VARCHAR, "
+            "CREATE OR REPLACE TABLE silver_container_od (origin VARCHAR, dest VARCHAR, "
+            "scenario VARCHAR, "
             "nm DOUBLE, searoute_version VARCHAR)"
         )
 
 
-def _round(v, nd=3):
+def _round(v: Any, nd: int = 3) -> Any:
     return round(v, nd) if isinstance(v, float) else v
 
 
-def _rows(con, sql: str) -> list[dict]:
+def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[dict[str, Any]]:
     cur = con.execute(sql)
+    assert cur.description is not None
     cols = [d[0] for d in cur.description]
-    return [dict(zip(cols, (_round(x) for x in r))) for r in cur.fetchall()]
+    return [dict(zip(cols, (_round(x) for x in r), strict=True)) for r in cur.fetchall()]
 
 
-def export_container(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict:
-    """gold/container_ports.json (+ parquet) and, when the OD cache covers the ports, gold/container_od.json."""
+def export_container(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict[str, int]:
+    """gold/container_ports.json (+ parquet) and, when the OD cache covers the ports,
+    gold/container_od.json.
+    """
     out = out or config.GOLD
     out.mkdir(parents=True, exist_ok=True)
-    con.execute(f"COPY gold_container_ports TO '{out / 'container_ports.parquet'}' (FORMAT parquet)")
+    con.execute(
+        f"COPY gold_container_ports TO '{out / 'container_ports.parquet'}' (FORMAT parquet)"
+    )
     ports = _rows(con, "SELECT * FROM gold_container_ports")
     for r in ports:
         for k in ("latest_date",):
@@ -92,7 +111,7 @@ def export_container(con: duckdb.DuckDBPyConnection, out: Path | None = None) ->
     od_rows = con.execute("SELECT origin, dest, scenario, nm FROM gold_container_od").fetchall()
     if od_rows:
         idx = {p: i for i, p in enumerate(ids)}
-        nm: dict[str, list[list]] = {
+        nm: dict[str, list[list[int | None]]] = {
             sc["id"]: [[None] * len(ids) for _ in ids] for sc in config.SCENARIOS
         }
         for o, d, sc, v in od_rows:
@@ -109,7 +128,7 @@ def export_container(con: duckdb.DuckDBPyConnection, out: Path | None = None) ->
     return counts
 
 
-def load_curated_events(path: Path = config.EVENTS_YAML) -> list[dict]:
+def load_curated_events(path: Path = config.EVENTS_YAML) -> list[dict[str, Any]]:
     raw = yaml.safe_load(path.read_text())["events"]
     out = []
     for e in raw:
@@ -128,13 +147,17 @@ def load_curated_events(path: Path = config.EVENTS_YAML) -> list[dict]:
     return out
 
 
-def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict:
+def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict[str, int]:
     out = out or config.GOLD
     (out / "series").mkdir(parents=True, exist_ok=True)
 
     # parquet for DuckDB-over-HTTPS consumers
-    con.execute(f"COPY gold_chokepoint_daily TO '{out / 'chokepoint_daily.parquet'}' (FORMAT parquet)")
-    con.execute(f"COPY gold_chokepoint_latest TO '{out / 'chokepoint_latest.parquet'}' (FORMAT parquet)")
+    con.execute(
+        f"COPY gold_chokepoint_daily TO '{out / 'chokepoint_daily.parquet'}' (FORMAT parquet)"
+    )
+    con.execute(
+        f"COPY gold_chokepoint_latest TO '{out / 'chokepoint_latest.parquet'}' (FORMAT parquet)"
+    )
 
     latest = _rows(con, "SELECT * FROM gold_chokepoint_latest")
     features = []
@@ -156,9 +179,16 @@ def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict
                 },
             }
         )
-    (out / "chokepoints.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    (out / "chokepoints.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": features})
+    )
 
-    ports = [r[0] for r in con.execute("SELECT DISTINCT portid FROM gold_chokepoint_daily ORDER BY 1").fetchall()]
+    ports = [
+        r[0]
+        for r in con.execute(
+            "SELECT DISTINCT portid FROM gold_chokepoint_daily ORDER BY 1"
+        ).fetchall()
+    ]
     for pid in ports:
         rows = _rows(
             con,
@@ -187,7 +217,9 @@ def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict
         if bad:
             raise ValueError(f"event {e['id']} references unknown chokepoints {bad}")
     for r in _rows(con, "SELECT * FROM silver_disruptions"):
-        cps = sorted({p.strip() for p in (r["affectedports"] or "").split(",") if p.strip() in known})
+        cps = sorted(
+            {p.strip() for p in (r["affectedports"] or "").split(",") if p.strip() in known}
+        )
         events.append(
             {
                 "id": f"pw-{r['eventid']}",
@@ -204,16 +236,16 @@ def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict
     (out / "events.json").write_text(json.dumps(events, separators=(",", ":")))
 
     counts = {
-        "silver_chokepoint_daily": con.execute("SELECT count(*) FROM silver_chokepoint_daily").fetchone()[0],
-        "silver_disruptions": con.execute("SELECT count(*) FROM silver_disruptions").fetchone()[0],
-        "silver_dim_chokepoint": con.execute("SELECT count(*) FROM silver_dim_chokepoint").fetchone()[0],
-        "gold_chokepoint_daily": con.execute("SELECT count(*) FROM gold_chokepoint_daily").fetchone()[0],
+        "silver_chokepoint_daily": scalar(con, "SELECT count(*) FROM silver_chokepoint_daily"),
+        "silver_disruptions": scalar(con, "SELECT count(*) FROM silver_disruptions"),
+        "silver_dim_chokepoint": scalar(con, "SELECT count(*) FROM silver_dim_chokepoint"),
+        "gold_chokepoint_daily": scalar(con, "SELECT count(*) FROM gold_chokepoint_daily"),
         "events": len(events),
-        "silver_port_daily": con.execute("SELECT count(*) FROM silver_port_daily").fetchone()[0],
-        "silver_dim_port": con.execute("SELECT count(*) FROM silver_dim_port").fetchone()[0],
+        "silver_port_daily": scalar(con, "SELECT count(*) FROM silver_port_daily"),
+        "silver_dim_port": scalar(con, "SELECT count(*) FROM silver_dim_port"),
         **container,
     }
-    data_max = con.execute("SELECT max(date) FROM silver_chokepoint_daily").fetchone()[0]
+    data_max = scalar(con, "SELECT max(date) FROM silver_chokepoint_daily")
     meta = {
         "built_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         "data_max_date": str(data_max),
@@ -226,7 +258,7 @@ def export_gold(con: duckdb.DuckDBPyConnection, out: Path | None = None) -> dict
     return counts
 
 
-def write_state(counts: dict) -> None:
+def write_state(counts: dict[str, int]) -> None:
     config.STATE.mkdir(parents=True, exist_ok=True)
     path = config.STATE / "build_state.json"
     prev = None
@@ -235,7 +267,7 @@ def write_state(counts: dict) -> None:
     path.write_text(json.dumps({"previous": prev, "current": counts}, indent=2))
 
 
-def run() -> dict:
+def run() -> dict[str, int]:
     con = duckdb.connect()
     build_silver(con)
     build_gold_tables(con)
